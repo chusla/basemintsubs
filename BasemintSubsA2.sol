@@ -217,17 +217,15 @@
 
     pragma solidity >=0.8.2 <0.9.0;
 
-    contract BasemintSharesJ1 is ERC2771Context, Ownable {
+    contract BasemintSubsA1 is ERC2771Context, Ownable {
         address public protocolFeeDestination;
         uint256 public protocolFeePercent;
         uint256 public subjectFeePercent;
-        uint256 public affiliateFeePercent;
         uint256 public defaultInitialPrice;
         uint256 public defaultPriceIncrement;
-        address public defaultAffiliate; 
 
         // Event for logging trades
-        event Trade(address indexed buyer, address indexed subject, address indexed affiliate,  uint256 shareAmount, uint256 ethAmount, uint256 shareBalance);
+        event Trade(address indexed buyer, address indexed subject, uint256 shareAmount, uint256 ethAmount, uint256 shareBalance);
 
         // Event for debugging trusted forwarders
         event Forwarders(address originalsender, address functionsender, address fromsender);     
@@ -250,12 +248,6 @@
         // Mapping to save initialization state for initialPrice and priceIncrement for each sharesSubject
         mapping(address => bool) public sharesInitialPriceIsSet;
         mapping(address => bool) public sharesPriceIncrementIsSet;
-
-        // SharesSubject => Affiliate
-        mapping(address => address) public sharesAffiliate;
-
-        // Mapping to save initialization state for sharesAffiliate for each sharesSubject
-        mapping(address => bool) public sharesAffiliateIsSet;
         
         // Minimal forwarder contract address
         address[] public _trustedForwarders;
@@ -263,10 +255,8 @@
         constructor(address[] memory trustedForwarders_) ERC2771Context(trustedForwarders_){
             _trustedForwarders = trustedForwarders_;
             protocolFeeDestination = owner();
-            defaultAffiliate = owner();
-            subjectFeePercent = 80;
-            protocolFeePercent = 15;       
-            affiliateFeePercent = 5;
+            subjectFeePercent = 5;
+            protocolFeePercent = 5; 
             defaultInitialPrice = 0.001 * 1 ether;
             defaultPriceIncrement = 0.001 * 1 ether;
         }
@@ -337,12 +327,6 @@
             sharesPriceIncrementIsSet[_msgSender()] = true;
         }
 
-        // Function to set affiliate, only callable by owner
-        function setAffiliate(address sharesSubject, address shareAffiliate) public onlyOwner {
-            sharesAffiliate[sharesSubject] = shareAffiliate;
-            sharesAffiliateIsSet[sharesSubject] = true;
-        }
-
         // Function to get initialPrice
         function getInitialPrice(address sharesSubject) public view returns (uint256) {
             uint256 initialPrice = defaultInitialPrice;
@@ -352,17 +336,6 @@
             }
             
             return initialPrice;
-        }
-
-        // Function to get sharesAffiliate
-        function getAffiliate(address sharesSubject) public view returns (address) {
-            address thisAffiliate = defaultAffiliate;
-
-            if (sharesAffiliateIsSet[sharesSubject] == true) {
-                thisAffiliate = sharesAffiliate[sharesSubject];
-            }        
-            
-            return thisAffiliate;
         }
 
             // Function to get priceIncrement
@@ -438,13 +411,11 @@
 
             uint256 protocolFee = totalPrice * protocolFeePercent / 100;
             uint256 subjectFee = totalPrice * subjectFeePercent / 100;
-            uint256 affiliateFee = totalPrice * affiliateFeePercent / 100;
-            address thisAffiliate = getAffiliate(sharesSubject);
 
             require(msg.value >= totalPrice, "Insufficient payment");
 
             // Deduct fees from the purchase price
-            uint256 remainingValue = msg.value - subjectFee - affiliateFee - protocolFee;
+            uint256 remainingValue = msg.value - subjectFee  - protocolFee;
 
             // Increment balance and supply by buyAmount
             sharesBalance[sharesSubject][from] = sharesBalance[sharesSubject][from] + buyAmount;
@@ -452,12 +423,11 @@
 
             uint256 balance = sharesBalance[sharesSubject][from];
 
-            emit Trade(from, sharesSubject, thisAffiliate, buyAmount, totalPrice, balance);
+            emit Trade(from, sharesSubject, buyAmount, totalPrice, balance);
 
             (bool success1, ) = protocolFeeDestination.call{value: protocolFee}("");
             (bool success2, ) = sharesSubject.call{value: subjectFee}("");
-            (bool success3, ) = thisAffiliate.call{value: affiliateFee}("");
-            require(success1 && success2 && success3, "Unable to send funds");
+            require(success1 && success2, "Unable to send funds");
 
             // Refund any excess funds to the buyer
             if (remainingValue > 0) {
@@ -483,7 +453,7 @@
                 uint256 balance = sharesBalance[sharesSubject][recipients[i]];
 
                 // Emit an event for each grant
-                emit Trade(sharesSubject, recipients[i], address(0), amounts[i], 0, balance);
+                emit Trade(sharesSubject, recipients[i], amounts[i], 0, balance);
             }
         }
 
